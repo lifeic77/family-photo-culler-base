@@ -12,6 +12,47 @@
     >
       {{ item.icon }}
     </ui-icon>
+
+    <div
+      v-for="group in visibleDuplicateGroups"
+      :key="group.group_id"
+      class="duplicate-group"
+      :title="groupTitle(group)"
+    >
+      <span class="duplicate-label">
+        {{ group.kind === 'exact' ? '精确重复' : '相似' }} {{ group.items.length }}
+      </span>
+      <ui-icon
+        light
+        size="24"
+        class="duplicate-action not-duplicate"
+        :class="{ active: statusAction === 'NOT_DUPLICATE', busy }"
+        title="不是重复"
+        @click.stop="submitDuplicate('NOT_DUPLICATE', group)"
+      >
+        link_off
+      </ui-icon>
+      <ui-icon
+        light
+        size="24"
+        class="duplicate-action confirm-duplicate"
+        :class="{ active: statusAction === 'DUPLICATE_CONFIRMED', busy }"
+        title="确认重复（只标记待删，仍需后续审批）"
+        @click.stop="submitDuplicate('DUPLICATE_CONFIRMED', group)"
+      >
+        content_copy
+      </ui-icon>
+    </div>
+
+    <ui-icon
+      v-if="duplicateError && !error"
+      light
+      class="duplicate-warning"
+      size="20"
+      :title="duplicateError"
+    >
+      warning
+    </ui-icon>
     <ui-icon
       v-if="error"
       light
@@ -43,10 +84,17 @@ const actions = [
 ];
 
 const statusAction = ref(null);
+const duplicateGroups = ref([]);
 const busy = ref(false);
 const connected = ref(false);
 const error = ref('');
+const duplicateError = ref('');
 let requestVersion = 0;
+
+const visibleDuplicateGroups = computed(() => {
+  const exact = duplicateGroups.value.filter(group => group.kind === 'exact');
+  return exact.length ? exact : duplicateGroups.value.filter(group => group.kind === 'similar');
+});
 
 const sidecarUrl = computed(() => {
   const local = window.localStorage.getItem('fpcSidecarUrl');
@@ -71,11 +119,43 @@ async function parseResponse(response) {
   return payload;
 }
 
+function groupTitle(group) {
+  const kind = group.kind === 'exact' ? '精确重复' : '视觉相似';
+  const members = (group.items || []).map(item => {
+    const diff = item.difference == null ? '' : ` (差异 ${item.difference})`;
+    return `${item.name || ('#' + item.file_id)}${diff}`;
+  });
+  return `${kind}：${members.join(' · ')}`;
+}
+
+async function loadDuplicateGroups(collection, id, version) {
+  try {
+    const query = new URLSearchParams({
+      collection_id: collection,
+      file_id: String(id),
+    });
+    const response = await fetch(`${sidecarUrl.value}/api/culling/duplicate-groups?${query}`, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'omit',
+    });
+    const payload = await parseResponse(response);
+    if (version !== requestVersion) return;
+    duplicateGroups.value = Array.isArray(payload?.groups) ? payload.groups : [];
+    duplicateError.value = '';
+  } catch (e) {
+    if (version !== requestVersion) return;
+    duplicateGroups.value = [];
+    duplicateError.value = `重复候选不可用：${e?.message || e}`;
+  }
+}
+
 async function loadStatus() {
   const collection = collectionId.value;
   const id = Number(fileId.value);
   if (!collection || !Number.isInteger(id) || id <= 0) {
     statusAction.value = null;
+    duplicateGroups.value = [];
     return;
   }
   const version = ++requestVersion;
@@ -99,13 +179,14 @@ async function loadStatus() {
     connected.value = false;
     error.value = `选片 sidecar 不可用：${e?.message || e}`;
   }
+  await loadDuplicateGroups(collection, id, version);
 }
 
-async function submit(action) {
-  if (busy.value) return;
+async function submit(action, extra = {}) {
+  if (busy.value) return false;
   const collection = collectionId.value;
   const id = Number(fileId.value);
-  if (!collection || !Number.isInteger(id) || id <= 0) return;
+  if (!collection || !Number.isInteger(id) || id <= 0) return false;
   busy.value = true;
   try {
     const response = await fetch(`${sidecarUrl.value}/api/culling/action`, {
@@ -116,18 +197,33 @@ async function submit(action) {
         collection_id: collection,
         file_id: id,
         action,
+        ...extra,
       }),
     });
     const payload = await parseResponse(response);
     statusAction.value = payload?.status?.action || action;
     connected.value = true;
     error.value = '';
+    return true;
   } catch (e) {
     connected.value = false;
     error.value = `选片记录失败：${e?.message || e}`;
+    return false;
   } finally {
     busy.value = false;
   }
+}
+
+async function submitDuplicate(action, group) {
+  if (!group?.group_id) return;
+  if (action === 'DUPLICATE_CONFIRMED') {
+    const label = group.kind === 'exact' ? '精确重复' : '视觉相似';
+    const ok = window.confirm(
+      `确认把当前照片标记为“${label}待删候选”？\n\n这一步不会删除文件，后续仍需 delete-plan、人工审批和隔离流程。`
+    );
+    if (!ok) return;
+  }
+  await submit(action, { group_id: group.group_id });
 }
 
 watch([collectionId, fileId], loadStatus, { immediate: true });
@@ -145,6 +241,7 @@ for (const item of actions) {
 .culling-actions {
   display: flex;
   align-items: center;
+  gap: 2px;
   pointer-events: all;
 }
 
@@ -166,13 +263,59 @@ for (const item of actions) {
   filter: drop-shadow(0 0 5px rgba(255, 213, 79, 0.55));
 }
 
-.culling-icon.busy {
+.culling-icon.busy,
+.duplicate-action.busy {
   opacity: 0.45;
   pointer-events: none;
 }
 
+.duplicate-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0 4px 0 8px;
+  padding: 3px 5px 3px 9px;
+  border: 1px solid rgba(255, 196, 77, 0.48);
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.62);
+  color: white;
+  backdrop-filter: blur(7px);
+}
+
+.duplicate-label {
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  color: rgba(255, 225, 164, 0.95);
+}
+
+.duplicate-action {
+  padding: 7px 5px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: #000 0 0 2px;
+}
+
+.duplicate-action:hover {
+  color: white;
+}
+
+.duplicate-action.not-duplicate.active {
+  color: #8ee6a5;
+}
+
+.duplicate-action.confirm-duplicate.active {
+  color: #ff9e93;
+}
+
 .culling-actions.disconnected .culling-icon:not(.active) {
   opacity: 0.55;
+}
+
+.duplicate-warning {
+  padding: 20px 5px 20px 4px;
+  color: #ffd180;
+  text-shadow: #000 0 0 2px;
 }
 
 .culling-error {

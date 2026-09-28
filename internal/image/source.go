@@ -339,6 +339,10 @@ func (source *Source) ListImageIds(dirs []string, maxPhotos int) <-chan ImageId 
 	return source.database.ListIds(dirs, maxPhotos, false)
 }
 
+func (source *Source) ListIdPaths(dirs []string, maxPhotos int) <-chan IdPath {
+	return source.database.ListIdPaths(dirs, maxPhotos)
+}
+
 func (source *Source) ListMissingEmbeddingIds(dirs []string, maxPhotos int) <-chan ImageId {
 	return source.database.ListIds(dirs, maxPhotos, true)
 }

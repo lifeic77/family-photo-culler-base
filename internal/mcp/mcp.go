@@ -114,6 +114,20 @@ func New(collections *[]collection.Collection, imageSource *image.Source, addr, 
 	}, searchPhotosHandler(collections, imageSource))
 
 	mcp.AddTool(sdkSrv, &mcp.Tool{
+		Name: "resolve_photo_paths",
+		Description: "Resolve up to 100 absolute photo paths already inside a Photofield collection to their indexed file IDs. " +
+			"Intended for trusted local sidecars mapping filesystem-analysis results back to Photofield IDs. Paths outside the requested collection are rejected.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"collection_id": map[string]any{"type": "string", "description": "The collection ID from list_collections."},
+				"paths":         map[string]any{"type": "array", "maxItems": maxResolvePhotoPaths, "items": map[string]any{"type": "string"}, "description": "Absolute paths to indexed photos in the collection."},
+			},
+			"required": []string{"collection_id", "paths"},
+		},
+	}, resolvePhotoPathsHandler(collections, imageSource))
+
+	mcp.AddTool(sdkSrv, &mcp.Tool{
 		Name: "get_photo_metadata",
 		Description: "Retrieve structured photo metadata (dimensions, path, dates, tags, faces, location, URLs). " +
 			"⚠️ Metadata alone may not be reliable — if you're about to show a photo to the user based on metadata or search results, call get_photo(file_id) to visually confirm it actually contains what you claim. " +

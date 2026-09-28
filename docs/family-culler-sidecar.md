@@ -58,3 +58,23 @@ Actions and shortcuts:
 The current action is fetched from the sidecar and highlighted in the Photofield controls. Arrow-key navigation remains Photofield-native. No culling action directly deletes or moves a file.
 
 The browser sidecar endpoint defaults to `http://127.0.0.1:8767` and can be overridden at runtime with `localStorage.fpcSidecarUrl`. The sidecar separately validates the exact Photofield browser Origin.
+
+## Duplicate review bridge
+
+The `family-culler` branch also exposes a narrow MCP tool for local analysis sidecars:
+
+```text
+resolve_photo_paths(collection_id, paths[])
+```
+
+- maximum 100 absolute paths per call
+- every requested path is canonicalized and must remain inside the requested collection directories
+- lookup uses Photofield's existing SQLite `ListIdPaths` stream, so resolving candidates does not walk/read every original file on NAS
+- the tool is read-only and does not scan, tag, move, or delete files
+
+The sidecar uses this only to map Czkawka filesystem results back to Photofield IDs. Duplicate scans are started from the local CLI, never from the browser. When a duplicate manifest exists, the single-photo viewer shows the strongest matching group (exact before similar) and offers two mouse-only decisions:
+
+- **不是重复** (`NOT_DUPLICATE`)
+- **确认重复** (`DUPLICATE_CONFIRMED`)
+
+`DUPLICATE_CONFIRMED` has a confirmation dialog and only records human delete intent. It still requires the separate delete-plan → approval → quarantine workflow. The browser cannot supply the trusted group membership; the sidecar reloads the Czkawka manifest and resolves the group server-side.
