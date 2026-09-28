@@ -93,6 +93,7 @@
     <controls
       class="controls"
       v-if="!!regionId"
+      :collectionId="collectionId"
       :scene="currentScene"
       :regionId="regionId"
       @navigate="navigate($event)"

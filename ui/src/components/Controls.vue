@@ -7,6 +7,10 @@
       <ui-icon light class="icon" size="32">arrow_back</ui-icon>
     </div>
     <div class="toolbar">
+      <culling-actions
+        :collectionId="collectionId"
+        :fileId="fileId"
+      ></culling-actions>
       <ui-icon
         light
         class="icon"
@@ -47,16 +51,19 @@
 <script setup>
 import { onKeyStroke, useIdle } from '@vueuse/core';
 import Tags from './Tags.vue';
+import CullingActions from './CullingActions.vue';
 import { computed, ref, toRefs } from 'vue';
 import { useApi } from '../api';
 import { useRegion, useRegionTags } from '../use';
 
 const props = defineProps({
+  collectionId: String,
   scene: Object,
   regionId: String,
 });
 
 const {
+  collectionId,
   scene,
   regionId,
 } = toRefs(props);
@@ -65,6 +72,8 @@ const {
   region,
   mutate: updateRegion,
 } = useRegion({ scene, id: regionId })
+
+const fileId = computed(() => region.value?.data?.id ?? null);
 
 const {
   tags,

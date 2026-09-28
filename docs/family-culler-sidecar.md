@@ -44,13 +44,17 @@ No Photofield file ID, tag, search result, similarity score, or AI output is del
 
 Original photo collections should be mounted/read as read-only. Cache/database data belongs on the separate work volume. Any future culling UI controls in this fork must call the sidecar and must not add a shortcut that writes, moves, or deletes originals directly through Photofield.
 
-## First integration target
+## Current culling controls
 
-Add minimal culling controls to the Vue photo viewer/grid:
+The `family-culler` branch adds a minimal control strip to the single-photo viewer. It submits only `collection_id`, `file_id`, and the selected action to the sidecar; original-path resolution stays server-side.
 
-- keeper
-- archive-but-not-selected
-- reject/delete-candidate
-- intentional-motion protection
+Actions and shortcuts:
 
-The UI should submit only `collection_id`, `file_id`, action, and optional group context. Original-path resolution stays server-side in the sidecar.
+- `1` — keeper (`KEEP_ONE`)
+- `2` — keep but do not select (`KEEP_ARCHIVE`)
+- `3` — reject / delete candidate (`REJECT_ONE`)
+- `4` — intentional-motion protection (`INTENTIONAL_MOTION`)
+
+The current action is fetched from the sidecar and highlighted in the Photofield controls. Arrow-key navigation remains Photofield-native. No culling action directly deletes or moves a file.
+
+The browser sidecar endpoint defaults to `http://127.0.0.1:8767` and can be overridden at runtime with `localStorage.fpcSidecarUrl`. The sidecar separately validates the exact Photofield browser Origin.
