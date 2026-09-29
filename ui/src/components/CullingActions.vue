@@ -14,6 +14,22 @@
     </ui-icon>
 
     <div
+      v-if="visibleSequenceGroup"
+      class="sequence-group"
+      :title="sequenceTitle(visibleSequenceGroup)"
+    >
+      <span class="sequence-label">
+        {{ sequenceKindLabel(visibleSequenceGroup.kind) }} {{ visibleSequenceGroup.items?.length || 0 }}
+      </span>
+      <span v-if="sequenceStateLabel" class="sequence-state">
+        {{ sequenceStateLabel }}
+      </span>
+      <span v-if="currentFaceEvidence" class="face-evidence">
+        {{ faceEvidenceLabel(currentFaceEvidence) }}
+      </span>
+    </div>
+
+    <div
       v-for="group in visibleDuplicateGroups"
       :key="group.group_id"
       class="duplicate-group"
@@ -44,6 +60,15 @@
       </ui-icon>
     </div>
 
+    <ui-icon
+      v-if="sequenceError && !error"
+      light
+      class="duplicate-warning"
+      size="20"
+      :title="sequenceError"
+    >
+      warning
+    </ui-icon>
     <ui-icon
       v-if="duplicateError && !error"
       light
@@ -85,15 +110,42 @@ const actions = [
 
 const statusAction = ref(null);
 const duplicateGroups = ref([]);
+const sequenceGroups = ref([]);
 const busy = ref(false);
 const connected = ref(false);
 const error = ref('');
 const duplicateError = ref('');
+const sequenceError = ref('');
 let requestVersion = 0;
 
 const visibleDuplicateGroups = computed(() => {
   const exact = duplicateGroups.value.filter(group => group.kind === 'exact');
   return exact.length ? exact : duplicateGroups.value.filter(group => group.kind === 'similar');
+});
+
+const visibleSequenceGroup = computed(() => sequenceGroups.value[0] || null);
+
+const currentSequenceItem = computed(() => {
+  const group = visibleSequenceGroup.value;
+  const id = Number(fileId.value);
+  if (!group || !Number.isInteger(id)) return null;
+  return (group.items || []).find(item => Number(item.file_id) === id) || null;
+});
+
+const currentFaceEvidence = computed(() => currentSequenceItem.value?.face_evidence || null);
+
+const sequenceStateLabel = computed(() => {
+  const group = visibleSequenceGroup.value;
+  if (!group) return '';
+  if (group.protected) return '保护序列';
+  const recommended = Number(group.recommended_keeper_file_id);
+  const current = Number(fileId.value);
+  if (Number.isInteger(recommended) && recommended > 0) {
+    if (recommended === current) return '建议精选';
+    const item = (group.items || []).find(row => Number(row.file_id) === recommended);
+    return `建议查看 ${item?.name || ('#' + recommended)}`;
+  }
+  return '人工复核';
 });
 
 const sidecarUrl = computed(() => {
@@ -117,6 +169,36 @@ async function parseResponse(response) {
     throw new Error(payload?.error || `sidecar HTTP ${response.status}`);
   }
   return payload;
+}
+
+function sequenceKindLabel(kind) {
+  return ({
+    burst: '连拍',
+    exposure_bracket: '包围曝光',
+    panorama: '全景序列',
+    hdr_panorama: 'HDR 全景',
+    unknown: '序列待确认',
+  })[kind] || '序列';
+}
+
+function faceEvidenceLabel(evidence) {
+  const count = Number(evidence?.face_count);
+  if (!Number.isInteger(count) || count < 0) return '';
+  if (count === 0) return '未检出人脸';
+  const parts = [`人脸 ${count}`];
+  const quality = Number(evidence?.mean_capture_quality);
+  const eye = Number(evidence?.min_eye_aspect);
+  if (Number.isFinite(quality)) parts.push(`人像质 ${quality.toFixed(2)}`);
+  if (Number.isFinite(eye)) parts.push(`眼部 ${eye.toFixed(2)}`);
+  return parts.join(' · ');
+}
+
+function sequenceTitle(group) {
+  const parts = [`${sequenceKindLabel(group.kind)} · ${group.items?.length || 0} 张`];
+  if (group.protected) parts.push('仅保护/复核，不参与最佳帧推荐');
+  else if (group.recommended_keeper_file_id) parts.push('推荐仅供参考，不改变保留/删除状态');
+  if (currentFaceEvidence.value) parts.push(faceEvidenceLabel(currentFaceEvidence.value));
+  return parts.join('；');
 }
 
 function groupTitle(group) {
@@ -150,12 +232,35 @@ async function loadDuplicateGroups(collection, id, version) {
   }
 }
 
+async function loadSequenceGroups(collection, id, version) {
+  try {
+    const query = new URLSearchParams({
+      collection_id: collection,
+      file_id: String(id),
+    });
+    const response = await fetch(`${sidecarUrl.value}/api/culling/sequence-groups?${query}`, {
+      method: 'GET',
+      cache: 'no-store',
+      credentials: 'omit',
+    });
+    const payload = await parseResponse(response);
+    if (version !== requestVersion) return;
+    sequenceGroups.value = Array.isArray(payload?.groups) ? payload.groups : [];
+    sequenceError.value = '';
+  } catch (e) {
+    if (version !== requestVersion) return;
+    sequenceGroups.value = [];
+    sequenceError.value = `序列证据不可用：${e?.message || e}`;
+  }
+}
+
 async function loadStatus() {
   const collection = collectionId.value;
   const id = Number(fileId.value);
   if (!collection || !Number.isInteger(id) || id <= 0) {
     statusAction.value = null;
     duplicateGroups.value = [];
+    sequenceGroups.value = [];
     return;
   }
   const version = ++requestVersion;
@@ -179,7 +284,10 @@ async function loadStatus() {
     connected.value = false;
     error.value = `选片 sidecar 不可用：${e?.message || e}`;
   }
-  await loadDuplicateGroups(collection, id, version);
+  await Promise.all([
+    loadDuplicateGroups(collection, id, version),
+    loadSequenceGroups(collection, id, version),
+  ]);
 }
 
 async function submit(action, extra = {}) {
@@ -267,6 +375,39 @@ for (const item of actions) {
 .duplicate-action.busy {
   opacity: 0.45;
   pointer-events: none;
+}
+
+.sequence-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px 0 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(144, 202, 249, 0.5);
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.68);
+  color: white;
+  backdrop-filter: blur(7px);
+}
+
+.sequence-label,
+.sequence-state,
+.face-evidence {
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sequence-label {
+  color: rgba(187, 222, 251, 0.98);
+}
+
+.sequence-state {
+  color: rgba(255, 224, 130, 0.98);
+}
+
+.face-evidence {
+  color: rgba(200, 230, 201, 0.98);
 }
 
 .duplicate-group {
