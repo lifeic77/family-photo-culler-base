@@ -20,13 +20,34 @@ type resolvePhotoPathsInput struct {
 }
 
 type resolvedPhotoPath struct {
-	Path   string `json:"path"`
-	FileId int    `json:"file_id"`
+	Path       string `json:"path"`
+	FileId     int    `json:"file_id"`
+	Width      int    `json:"width,omitempty"`
+	Height     int    `json:"height,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	PreviewUrl string `json:"preview_url,omitempty"`
 }
 
 type resolvePhotoPathsOutput struct {
 	Items   []resolvedPhotoPath `json:"items"`
 	Missing []string            `json:"missing,omitempty"`
+}
+
+func applyResolvedPhotoInfo(item *resolvedPhotoPath, info image.Info, serverBaseURL, apiPrefix string) {
+	item.Width = info.Width
+	item.Height = info.Height
+	if !info.DateTime.IsZero() {
+		item.CreatedAt = info.DateTime.Format("2006-01-02T15:04:05Z07:00")
+	}
+	if serverBaseURL != "" && item.Path != "" {
+		filename := filepath.Base(item.Path)
+		previewFilename := strings.TrimSuffix(filename, filepath.Ext(filename)) + "_preview.jpg"
+		item.PreviewUrl = fileURL(
+			serverBaseURL,
+			apiPrefix,
+			fmt.Sprintf("/files/%d/previews/%s?w=400", item.FileId, previewFilename),
+		)
+	}
 }
 
 func findCollection(collections *[]collection.Collection, id string) *collection.Collection {
@@ -72,7 +93,7 @@ func canonicalCollectionPath(raw string, dirs []string) (string, error) {
 	return "", fmt.Errorf("path is outside collection directories")
 }
 
-func resolvePhotoPathsHandler(collections *[]collection.Collection, imageSource *image.Source) mcp.ToolHandlerFor[resolvePhotoPathsInput, resolvePhotoPathsOutput] {
+func resolvePhotoPathsHandler(collections *[]collection.Collection, imageSource *image.Source, srv *Server) mcp.ToolHandlerFor[resolvePhotoPathsInput, resolvePhotoPathsOutput] {
 	return func(_ context.Context, _ *mcp.CallToolRequest, input resolvePhotoPathsInput) (*mcp.CallToolResult, resolvePhotoPathsOutput, error) {
 		coll := findCollection(collections, input.CollectionId)
 		if coll == nil {
@@ -125,9 +146,20 @@ func resolvePhotoPathsHandler(collections *[]collection.Collection, imageSource 
 		}
 
 		out := resolvePhotoPathsOutput{Items: make([]resolvedPhotoPath, 0, len(found))}
+		serverBaseURL := ""
+		apiPrefix := ""
+		if srv != nil {
+			apiPrefix = srv.apiPrefix
+			if value := srv.baseURL.Load(); value != nil {
+				serverBaseURL, _ = value.(string)
+			}
+		}
 		for _, path := range ordered {
 			if id, ok := found[path]; ok {
-				out.Items = append(out.Items, resolvedPhotoPath{Path: path, FileId: id})
+				item := resolvedPhotoPath{Path: path, FileId: id}
+				info := imageSource.GetInfo(image.ImageId(id))
+				applyResolvedPhotoInfo(&item, info, serverBaseURL, apiPrefix)
+				out.Items = append(out.Items, item)
 			} else {
 				out.Missing = append(out.Missing, path)
 			}

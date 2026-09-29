@@ -115,8 +115,9 @@ func New(collections *[]collection.Collection, imageSource *image.Source, addr, 
 
 	mcp.AddTool(sdkSrv, &mcp.Tool{
 		Name: "resolve_photo_paths",
-		Description: "Resolve up to 100 absolute photo paths already inside a Photofield collection to their indexed file IDs. " +
-			"Intended for trusted local sidecars mapping filesystem-analysis results back to Photofield IDs. Paths outside the requested collection are rejected.",
+		Description: "Resolve up to 100 absolute photo paths already inside a Photofield collection to indexed file IDs and cached metadata. " +
+			"Returns path, file_id, dimensions, capture time, and preview URL without re-reading original files. " +
+			"Intended for trusted local sidecars; paths outside the requested collection are rejected.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -125,7 +126,7 @@ func New(collections *[]collection.Collection, imageSource *image.Source, addr, 
 			},
 			"required": []string{"collection_id", "paths"},
 		},
-	}, resolvePhotoPathsHandler(collections, imageSource))
+	}, resolvePhotoPathsHandler(collections, imageSource, srv))
 
 	mcp.AddTool(sdkSrv, &mcp.Tool{
 		Name: "get_photo_metadata",

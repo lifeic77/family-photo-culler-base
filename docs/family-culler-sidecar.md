@@ -70,6 +70,7 @@ resolve_photo_paths(collection_id, paths[])
 - maximum 100 absolute paths per call
 - every requested path is canonicalized and must remain inside the requested collection directories
 - lookup uses Photofield's existing SQLite `ListIdPaths` stream, so resolving candidates does not walk/read every original file on NAS
+- each resolved item also returns cached `width`, `height`, `created_at`, and a standard `preview_url`; these come from Photofield's local index / URL construction and do not re-read the original file
 - the tool is read-only and does not scan, tag, move, or delete files
 
 The sidecar uses this only to map Czkawka filesystem results back to Photofield IDs. Duplicate scans are started from the local CLI, never from the browser. When a duplicate manifest exists, the single-photo viewer shows the strongest matching group (exact before similar) and offers two mouse-only decisions:

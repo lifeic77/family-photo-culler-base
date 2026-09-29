@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"photofield/internal/image"
 )
 
 func TestCanonicalCollectionPath(t *testing.T) {
@@ -62,5 +65,25 @@ func TestCanonicalCollectionPathRejectsEscapingSymlink(t *testing.T) {
 	}
 	if _, err := canonicalCollectionPath(link, []string{insideDir}); err == nil {
 		t.Fatal("symlink escaping collection was accepted")
+	}
+}
+
+func TestApplyResolvedPhotoInfoUsesCachedInfoAndConstructsPreviewURL(t *testing.T) {
+	item := resolvedPhotoPath{Path: "/photos/Trip/IMG_0123.JPG", FileId: 42}
+	info := image.Info{
+		Width:    6000,
+		Height:   4000,
+		DateTime: time.Date(2026, 9, 29, 14, 3, 2, 0, time.FixedZone("CST", 8*60*60)),
+	}
+	applyResolvedPhotoInfo(&item, info, "http://127.0.0.1:8080", "/api")
+	if item.Width != 6000 || item.Height != 4000 {
+		t.Fatalf("dimensions=%dx%d", item.Width, item.Height)
+	}
+	if item.CreatedAt != "2026-09-29T14:03:02+08:00" {
+		t.Fatalf("created_at=%q", item.CreatedAt)
+	}
+	want := "http://127.0.0.1:8080/api/files/42/previews/IMG_0123_preview.jpg?w=400"
+	if item.PreviewUrl != want {
+		t.Fatalf("preview_url=%q want %q", item.PreviewUrl, want)
 	}
 }
