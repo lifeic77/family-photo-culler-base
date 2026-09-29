@@ -405,6 +405,9 @@ type GetFilesIdPreviewsFilenameParams struct {
 	// Target height in pixels. If omitted, uses original height or scales proportionally with width.
 	H *int `json:"h,omitempty"`
 
+	// Serve only an already-cached internal thumbnail. Never generate a preview from the original file. Returns 404 when no cached thumbnail exists.
+	CacheOnly *bool `json:"cache_only,omitempty"`
+
 	// Border width in pixels to add around the image.
 	BorderWidth *int `json:"border_width,omitempty"`
 
@@ -896,6 +899,17 @@ func (siw *ServerInterfaceWrapper) GetFilesIdPreviewsFilename(w http.ResponseWri
 	err = runtime.BindQueryParameter("form", true, false, "h", r.URL.Query(), &params.H)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Invalid format for parameter h: %s", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cache_only" -------------
+	if paramValue := r.URL.Query().Get("cache_only"); paramValue != "" {
+
+	}
+
+	err = runtime.BindQueryParameter("form", true, false, "cache_only", r.URL.Query(), &params.CacheOnly)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid format for parameter cache_only: %s", err), http.StatusBadRequest)
 		return
 	}
 

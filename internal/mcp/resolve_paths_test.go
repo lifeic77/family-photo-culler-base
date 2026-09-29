@@ -86,4 +86,8 @@ func TestApplyResolvedPhotoInfoUsesCachedInfoAndConstructsPreviewURL(t *testing.
 	if item.PreviewUrl != want {
 		t.Fatalf("preview_url=%q want %q", item.PreviewUrl, want)
 	}
+	wantCached := "http://127.0.0.1:8080/api/files/42/previews/IMG_0123_preview.jpg?cache_only=true"
+	if item.CachedPreviewUrl != wantCached {
+		t.Fatalf("cached_preview_url=%q want %q", item.CachedPreviewUrl, wantCached)
+	}
 }

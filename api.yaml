@@ -623,6 +623,15 @@ paths:
             maximum: 4096
           example: 48
         
+        - name: cache_only
+          in: query
+          required: false
+          description: Serve only an already-cached internal thumbnail. Never generate a preview from the original file. Returns 404 when no cached thumbnail exists.
+          schema:
+            type: boolean
+            default: false
+          example: true
+
         - name: border_width
           in: query
           required: false

@@ -20,12 +20,13 @@ type resolvePhotoPathsInput struct {
 }
 
 type resolvedPhotoPath struct {
-	Path       string `json:"path"`
-	FileId     int    `json:"file_id"`
-	Width      int    `json:"width,omitempty"`
-	Height     int    `json:"height,omitempty"`
-	CreatedAt  string `json:"created_at,omitempty"`
-	PreviewUrl string `json:"preview_url,omitempty"`
+	Path             string `json:"path"`
+	FileId           int    `json:"file_id"`
+	Width            int    `json:"width,omitempty"`
+	Height           int    `json:"height,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
+	PreviewUrl       string `json:"preview_url,omitempty"`
+	CachedPreviewUrl string `json:"cached_preview_url,omitempty"`
 }
 
 type resolvePhotoPathsOutput struct {
@@ -46,6 +47,11 @@ func applyResolvedPhotoInfo(item *resolvedPhotoPath, info image.Info, serverBase
 			serverBaseURL,
 			apiPrefix,
 			fmt.Sprintf("/files/%d/previews/%s?w=400", item.FileId, previewFilename),
+		)
+		item.CachedPreviewUrl = fileURL(
+			serverBaseURL,
+			apiPrefix,
+			fmt.Sprintf("/files/%d/previews/%s?cache_only=true", item.FileId, previewFilename),
 		)
 	}
 }
@@ -157,7 +163,7 @@ func resolvePhotoPathsHandler(collections *[]collection.Collection, imageSource 
 		for _, path := range ordered {
 			if id, ok := found[path]; ok {
 				item := resolvedPhotoPath{Path: path, FileId: id}
-				info := imageSource.GetInfo(image.ImageId(id))
+				info, _ := imageSource.GetCachedInfo(image.ImageId(id))
 				applyResolvedPhotoInfo(&item, info, serverBaseURL, apiPrefix)
 				out.Items = append(out.Items, item)
 			} else {

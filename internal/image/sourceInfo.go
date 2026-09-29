@@ -37,6 +37,17 @@ func (source *Source) heuristicFromPath(path string) (Info, error) {
 	return info, nil
 }
 
+func (source *Source) GetCachedInfo(id ImageId) (Info, bool) {
+	// Intentionally bypass imageInfoCache: normal GetInfo may populate that
+	// shared cache from heuristic path/mtime metadata. Cache-only callers need
+	// provenance from the indexed SQLite metadata, not a previous heuristic.
+	result, found := source.database.Get(id)
+	if !found || result.NeedsMeta() {
+		return Info{}, false
+	}
+	return result.Info, true
+}
+
 func (source *Source) GetInfo(id ImageId) Info {
 	var info Info
 	var found bool

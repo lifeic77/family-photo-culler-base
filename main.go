@@ -1558,7 +1558,25 @@ func (*Api) GetFilesIdVariantsSizeFilename(w http.ResponseWriter, r *http.Reques
 func (*Api) GetFilesIdPreviewsFilename(w http.ResponseWriter, r *http.Request, id openapi.FileIdPathParam, filename openapi.FilenamePathParam, params openapi.GetFilesIdPreviewsFilenameParams) {
 	ctx := r.Context()
 
-	// Get file info
+	if params.CacheOnly != nil && *params.CacheOnly {
+		served := false
+		imageSource.ThumbSink().Reader(ctx, pfio.ImageId(id), "", func(rs io.ReadSeeker, err error) {
+			if err != nil || rs == nil {
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Cache-Control", "max-age=86400")
+			w.Header().Set("X-Photofield-Preview-Source", "thumbnail-cache")
+			http.ServeContent(w, r, string(filename), time.Time{}, rs)
+			served = true
+		})
+		if !served {
+			problem(w, r, http.StatusNotFound, "Cached preview not found")
+		}
+		return
+	}
+
+	// Non-cache-only preview rendering may use the normal metadata heuristic.
 	info := imageSource.GetInfo(image.ImageId(id))
 	if info.Width == 0 || info.Height == 0 {
 		problem(w, r, http.StatusNotFound, "File not found")
